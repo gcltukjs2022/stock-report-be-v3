@@ -1,0 +1,107 @@
+service: stock-report-be-v3
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'ap-east-1'}
+  architecture: arm64
+  ecr:
+    images:
+      appimage:
+        path: ./
+  environment:
+    QUEUE_URL: !Ref NewsArticleQueue
+    DYNAMODB_TABLE: !Ref NewsArticlesTable
+    S3_BUCKET_NAME: !Ref StockReportBucket
+    YAHOO_API: ${env:YAHOO_API, 'https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes'}
+    RAPIDAPI_KEY: ${env:RAPIDAPI_KEY}
+    RAPIDAPI_HOST: ${env:RAPIDAPI_HOST, 'apidojo-yahoo-finance-v1.p.rapidapi.com'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: !GetAtt NewsArticleQueue.Arn
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:Scan
+            - dynamodb:Query
+          Resource: !GetAtt NewsArticlesTable.Arn
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource: !Join ['', ['arn:aws:s3:::', !Ref StockReportBucket, '/*']]
+
+functions:
+  scheduler:
+    image:
+      name: appimage
+      command:
+        - dist/handlers/schedulerHandler.handler
+    timeout: 300
+    memorySize: 2048
+    events:
+      - schedule: cron(0 0 * * ? *) # Daily at 8:00 AM HKT (00:00 UTC)
+
+  worker:
+    image:
+      name: appimage
+      command:
+        - dist/handlers/workerHandler.handler
+    timeout: 60
+    memorySize: 2048
+    reservedConcurrency: 5
+    events:
+      - sqs:
+          arn: !GetAtt NewsArticleQueue.Arn
+          batchSize: 1
+
+  report:
+    image:
+      name: appimage
+      command:
+        - dist/handlers/reportHandler.handler
+    timeout: 120
+    memorySize: 1536
+    events:
+      - schedule: cron(40 0 * * ? *) # Daily at 8:40 AM HKT (00:40 UTC)
+
+resources:
+  Resources:
+    NewsArticleQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-news-queue-${sls:stage}
+        VisibilityTimeout: 120
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NewsArticleDLQ.Arn
+          maxReceiveCount: 3
+
+    NewsArticleDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-news-dlq-${sls:stage}
+
+    NewsArticlesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-articles-${sls:stage}
+        AttributeDefinitions:
+          - AttributeName: url
+            AttributeType: S
+        KeySchema:
+          - AttributeName: url
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    StockReportBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-reports-${sls:stage}-${self:provider.region}

@@ -1,0 +1,511 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "The AWS CloudFormation template for this Serverless application",
+  "Resources": {
+    "SchedulerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/stock-report-be-v3-dev-scheduler"
+      }
+    },
+    "WorkerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/stock-report-be-v3-dev-worker"
+      }
+    },
+    "ReportLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/stock-report-be-v3-dev-report"
+      }
+    },
+    "IamRoleLambdaExecution": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": {
+              "Fn::Join": [
+                "-",
+                [
+                  "stock-report-be-v3",
+                  "dev",
+                  "lambda"
+                ]
+              ]
+            },
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:CreateLogGroup",
+                    "logs:TagResource"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/stock-report-be-v3-dev*:*"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/stock-report-be-v3-dev*:*:*"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:SendMessage",
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "NewsArticleQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:PutItem",
+                    "dynamodb:GetItem",
+                    "dynamodb:Scan",
+                    "dynamodb:Query"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "NewsArticlesTable",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject"
+                  ],
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:aws:s3:::",
+                        {
+                          "Ref": "StockReportBucket"
+                        },
+                        "/*"
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "NewsArticleQueue",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "Path": "/",
+        "RoleName": {
+          "Fn::Join": [
+            "-",
+            [
+              "stock-report-be-v3",
+              "dev",
+              {
+                "Ref": "AWS::Region"
+              },
+              "lambdaRole"
+            ]
+          ]
+        }
+      }
+    },
+    "SchedulerLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ImageUri": "263337415914.dkr.ecr.ap-east-1.amazonaws.com/serverless-stock-report-be-v3-dev@sha256:69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+        },
+        "ImageConfig": {
+          "Command": [
+            "dist/handlers/schedulerHandler.handler"
+          ]
+        },
+        "PackageType": "Image",
+        "FunctionName": "stock-report-be-v3-dev-scheduler",
+        "MemorySize": 2048,
+        "Timeout": 300,
+        "Architectures": [
+          "arm64"
+        ],
+        "Environment": {
+          "Variables": {
+            "QUEUE_URL": {
+              "Ref": "NewsArticleQueue"
+            },
+            "DYNAMODB_TABLE": {
+              "Ref": "NewsArticlesTable"
+            },
+            "S3_BUCKET_NAME": {
+              "Ref": "StockReportBucket"
+            },
+            "YAHOO_API": "https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes",
+            "RAPIDAPI_KEY": "df3d371a40msh23a3226ca5da397p18efd7jsn4ddc8a50cddb",
+            "RAPIDAPI_HOST": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "IamRoleLambdaExecution",
+            "Arn"
+          ]
+        }
+      },
+      "DependsOn": [
+        "SchedulerLogGroup"
+      ]
+    },
+    "SchedulerLambdaVersiondd8zF1rNSN3PPAolJi2Ir9Oy8WzjeSe6EN3ZdpNmiE": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "SchedulerLambdaFunction"
+        },
+        "CodeSha256": "69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+      }
+    },
+    "WorkerLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ImageUri": "263337415914.dkr.ecr.ap-east-1.amazonaws.com/serverless-stock-report-be-v3-dev@sha256:69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+        },
+        "ImageConfig": {
+          "Command": [
+            "dist/handlers/workerHandler.handler"
+          ]
+        },
+        "PackageType": "Image",
+        "FunctionName": "stock-report-be-v3-dev-worker",
+        "MemorySize": 2048,
+        "Timeout": 60,
+        "Architectures": [
+          "arm64"
+        ],
+        "Environment": {
+          "Variables": {
+            "QUEUE_URL": {
+              "Ref": "NewsArticleQueue"
+            },
+            "DYNAMODB_TABLE": {
+              "Ref": "NewsArticlesTable"
+            },
+            "S3_BUCKET_NAME": {
+              "Ref": "StockReportBucket"
+            },
+            "YAHOO_API": "https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes",
+            "RAPIDAPI_KEY": "df3d371a40msh23a3226ca5da397p18efd7jsn4ddc8a50cddb",
+            "RAPIDAPI_HOST": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "IamRoleLambdaExecution",
+            "Arn"
+          ]
+        },
+        "ReservedConcurrentExecutions": 5
+      },
+      "DependsOn": [
+        "WorkerLogGroup"
+      ]
+    },
+    "WorkerLambdaVersionHhhcD72Jzvi6wJAmRjIjmASKe1p3j3wWLj5a8bQE": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "WorkerLambdaFunction"
+        },
+        "CodeSha256": "69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+      }
+    },
+    "ReportLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "ImageUri": "263337415914.dkr.ecr.ap-east-1.amazonaws.com/serverless-stock-report-be-v3-dev@sha256:69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+        },
+        "ImageConfig": {
+          "Command": [
+            "dist/handlers/reportHandler.handler"
+          ]
+        },
+        "PackageType": "Image",
+        "FunctionName": "stock-report-be-v3-dev-report",
+        "MemorySize": 1536,
+        "Timeout": 120,
+        "Architectures": [
+          "arm64"
+        ],
+        "Environment": {
+          "Variables": {
+            "QUEUE_URL": {
+              "Ref": "NewsArticleQueue"
+            },
+            "DYNAMODB_TABLE": {
+              "Ref": "NewsArticlesTable"
+            },
+            "S3_BUCKET_NAME": {
+              "Ref": "StockReportBucket"
+            },
+            "YAHOO_API": "https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes",
+            "RAPIDAPI_KEY": "df3d371a40msh23a3226ca5da397p18efd7jsn4ddc8a50cddb",
+            "RAPIDAPI_HOST": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "IamRoleLambdaExecution",
+            "Arn"
+          ]
+        }
+      },
+      "DependsOn": [
+        "ReportLogGroup"
+      ]
+    },
+    "ReportLambdaVersionMVmPM5p8TYeUUGyhwkeLMCJB20QAMQznPp8CoPejT3o": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "ReportLambdaFunction"
+        },
+        "CodeSha256": "69760dea8bf757b52a8d73fc3f3dfe65ba1a76e1b2122262313730b0252fa019"
+      }
+    },
+    "SchedulerEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(0 0 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "SchedulerLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "schedulerSchedule"
+          }
+        ]
+      }
+    },
+    "SchedulerLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "SchedulerLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "SchedulerEventsRuleSchedule1",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "ReportEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(40 0 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "ReportLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "reportSchedule"
+          }
+        ]
+      }
+    },
+    "ReportLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "ReportLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "ReportEventsRuleSchedule1",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "WorkerEventSourceMappingSQSNewsArticleQueue": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "DependsOn": [
+        "IamRoleLambdaExecution"
+      ],
+      "Properties": {
+        "BatchSize": 1,
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "NewsArticleQueue",
+            "Arn"
+          ]
+        },
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "WorkerLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Enabled": true
+      }
+    },
+    "NewsArticleQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": "stock-report-be-v3-news-queue-dev",
+        "VisibilityTimeout": 120,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "NewsArticleDLQ",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 3
+        }
+      }
+    },
+    "NewsArticleDLQ": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": "stock-report-be-v3-news-dlq-dev"
+      }
+    },
+    "NewsArticlesTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "stock-report-be-v3-articles-dev",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "url",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "url",
+            "KeyType": "HASH"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST"
+      }
+    },
+    "StockReportBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": "stock-report-be-v3-reports-dev-ap-east-1"
+      }
+    }
+  },
+  "Outputs": {
+    "ServerlessDeploymentBucketName": {
+      "Value": "serverless-framework-deployments-ap-east-1-76bde20d-8008",
+      "Export": {
+        "Name": "sls-stock-report-be-v3-dev-ServerlessDeploymentBucketName"
+      }
+    },
+    "SchedulerLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {
+        "Ref": "SchedulerLambdaVersiondd8zF1rNSN3PPAolJi2Ir9Oy8WzjeSe6EN3ZdpNmiE"
+      },
+      "Export": {
+        "Name": "sls-stock-report-be-v3-dev-SchedulerLambdaFunctionQualifiedArn"
+      }
+    },
+    "WorkerLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {
+        "Ref": "WorkerLambdaVersionHhhcD72Jzvi6wJAmRjIjmASKe1p3j3wWLj5a8bQE"
+      },
+      "Export": {
+        "Name": "sls-stock-report-be-v3-dev-WorkerLambdaFunctionQualifiedArn"
+      }
+    },
+    "ReportLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {
+        "Ref": "ReportLambdaVersionMVmPM5p8TYeUUGyhwkeLMCJB20QAMQznPp8CoPejT3o"
+      },
+      "Export": {
+        "Name": "sls-stock-report-be-v3-dev-ReportLambdaFunctionQualifiedArn"
+      }
+    }
+  }
+}
